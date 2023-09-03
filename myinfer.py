@@ -1,6 +1,7 @@
 '''
-runtime\python.exe myinfer.py 0 "E:\codes\py39\RVC-beta\todo-songs\1111.wav" "E:\codes\py39\logs\mi-test\added_IVF677_Flat_nprobe_7.index" harvest "test.wav" "weights/mi-test.pth" 0.6 cuda:0 True
+runtime\python.exe myinfer.py 0 "C:\ YOUR PATH FOR THE ROOT (RVC0813Nvidia)\INPUTS_VOCAL\vocal.wav" "C:\ YOUR PATH FOR THE ROOT (RVC0813Nvidia)\logs\Hagrid.index" harvest "C:\ YOUR PATH FOR THE ROOT (RVC0813Nvidia)\INPUTS_VOCAL\test.wav" "C:\ YOUR PATH FOR THE ROOT (RVC0813Nvidia)\weights\HagridFR.pth" 0.6 cuda:0 True 5 44100 44100 1.0 1.0 True
 '''
+
 import os,sys,pdb,torch
 now_dir = os.getcwd()
 sys.path.append(now_dir)
@@ -86,21 +87,28 @@ class Config:
 
         return x_pad, x_query, x_center, x_max
 
-f0up_key=sys.argv[1]
-input_path=sys.argv[2]
-index_path=sys.argv[3]
-f0method=sys.argv[4]#harvest or pm
-opt_path=sys.argv[5]
-model_path=sys.argv[6]
-index_rate=float(sys.argv[7])
-device=sys.argv[8]
-is_half=bool(sys.argv[9])
+f0up_key=sys.argv[1]                     
+input_path = sys.argv[2]                 
+index_path = sys.argv[3]                 
+f0method = sys.argv[4]                   
+opt_path = sys.argv[5]                   
+model_path = sys.argv[6]                 
+index_rate = float(sys.argv[7])          
+device = sys.argv[8]                     
+is_half = bool(sys.argv[9])              
+filter_radius = int(sys.argv[10])        
+tgt_sr = int(sys.argv[11])               
+resample_sr = int(sys.argv[12])          
+rms_mix_rate = float(sys.argv[13])       
+version = sys.argv[14]                   
+protect = sys.argv[15].lower() == 'false'
+
 print(sys.argv)
 config=Config(device,is_half)
 now_dir=os.getcwd()
 sys.path.append(now_dir)
 from vc_infer_pipeline import VC
-from lib.infer_pack.models import SynthesizerTrnMs256NSFsid, SynthesizerTrnMs256NSFsid_nono
+from lib.infer_pack.models import SynthesizerTrnMs768NSFsid, SynthesizerTrnMs768NSFsid_nono
 from lib.audio import load_audio
 from fairseq import checkpoint_utils
 from scipy.io import wavfile
@@ -115,8 +123,8 @@ def load_hubert():
     else:hubert_model = hubert_model.float()
     hubert_model.eval()
 
-def vc_single(sid,input_audio,f0_up_key,f0_file,f0_method,file_index,index_rate):
-    global tgt_sr,net_g,vc,hubert_model
+def vc_single(sid, input_audio, f0_up_key, f0_file, f0_method, file_index, index_rate, filter_radius, tgt_sr, resample_sr, rms_mix_rate, version, protect):
+    global net_g, vc, hubert_model
     if input_audio is None:return "You need to upload an audio", None
     f0_up_key = int(f0_up_key)
     audio=load_audio(input_audio,16000)
@@ -124,7 +132,7 @@ def vc_single(sid,input_audio,f0_up_key,f0_file,f0_method,file_index,index_rate)
     if(hubert_model==None):load_hubert()
     if_f0 = cpt.get("f0", 1)
     # audio_opt=vc.pipeline(hubert_model,net_g,sid,audio,times,f0_up_key,f0_method,file_index,file_big_npy,index_rate,if_f0,f0_file=f0_file)
-    audio_opt=vc.pipeline(hubert_model,net_g,sid,audio,times,f0_up_key,f0_method,file_index,index_rate,if_f0,f0_file=f0_file)
+    audio_opt = vc.pipeline(hubert_model, net_g, sid, audio, input_path, times, f0_up_key, f0_method, index_path, index_rate, if_f0, filter_radius, tgt_sr, resample_sr, rms_mix_rate, version, protect, f0_file=f0_file)
     print(times)
     return audio_opt
 
@@ -137,9 +145,9 @@ def get_vc(model_path):
     cpt["config"][-3]=cpt["weight"]["emb_g.weight"].shape[0]#n_spk
     if_f0=cpt.get("f0",1)
     if(if_f0==1):
-        net_g = SynthesizerTrnMs256NSFsid(*cpt["config"], is_half=is_half)
+        net_g = SynthesizerTrnMs768NSFsid(*cpt["config"], is_half=is_half)
     else:
-        net_g = SynthesizerTrnMs256NSFsid_nono(*cpt["config"])
+        net_g = SynthesizerTrnMs768NSFsid_nono(*cpt["config"])
     del net_g.enc_q
     print(net_g.load_state_dict(cpt["weight"], strict=False))  # 不加这一行清不干净，真奇葩
     net_g.eval().to(device)
@@ -151,6 +159,6 @@ def get_vc(model_path):
 
 
 get_vc(model_path)
-wav_opt=vc_single(0,input_path,f0up_key,None,f0method,index_path,index_rate)
+wav_opt = vc_single(0, input_path, f0up_key, None, f0method, index_path, index_rate, filter_radius, tgt_sr, resample_sr, rms_mix_rate, version, protect)
 wavfile.write(opt_path, tgt_sr, wav_opt)
 
